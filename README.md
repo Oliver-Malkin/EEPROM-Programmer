@@ -16,7 +16,7 @@ In the initial state the programmer will expect the data in 4 bytes in the follo
 
 When this changes is when the programmer is set to byte stream mode. Then the programmer will expect every incoming byte to be a data byte and write sequentially to the starting address.
 
-For example, sending the instruction `0x02` initiates the programmer into byte stream mode. The next two bytes must be the starting address such as `0x000a`. The programmer will send an ACK signal to say it is ready for the byte stream. Data can be sent to the programmer is 64 byte chunks. After those 64 bytes have been written the programmer will again send an ACK signal. It does this to buffer data but to let the programming computer know if it encountered any errors during the writing stage.
+For example, sending the instruction `0x02` initiates the programmer into byte stream mode. The next two bytes must be the starting address such as `0x000a`. The programmer will send an ACK signal to say it is ready for the byte stream. Data can be sent to the programmer in 64 byte chunks. After those 64 bytes have been written the programmer will again send an ACK signal. It does this to buffer data but to let the programming computer know if it encountered any errors during the writing stage.
 
 Byte stream will exit when the address reaches the limit for the chip being programmed.
 
