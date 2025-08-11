@@ -24,7 +24,9 @@ The programmer can also be sent a handshake when in "waiting" mode. The programm
 
 ## Read instructions:
 
-There are two modes for reading, the first is Read Byte which reads 1 byte from the supplied address. The other mode (a bit more useful) is Read Byte Stream which will read a series of bytes from one address to another. This can be initiated as such `0x03 0x1234` which will read the byte stored at address `0x1234`. To read from one address to another use `0x04 0x0000 0xaaaa`. This will read from address `0x0000` to `0xaaaa`.
+Important note: the Pico is a 3.3v tolerant device, it cannot read the EEPROM when it is powered with a 5v supply. Reading whist doing so will damage the EEPROM. Ensure that the EEPROM is powered either by the Pico or a separate 3.3v supply.
+
+There are two modes for reading, the first is Read Byte (instruction `0x03`) which reads 1 byte from the supplied address. The other mode (a bit more useful) is Read Byte Stream (`0x04`) which will read a series of bytes from one address to another. This can be initiated as such `0x03 0x1234` which will read the byte stored at address `0x1234`. To read from one address to another use `0x04 0x0000 0xaaaa`. This will read from address `0x0000` to `0xaaaa`.
 
 ### Cancel byte stream
 

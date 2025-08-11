@@ -67,23 +67,43 @@ void setData(uint8_t data) {
     }
 }
 
-// NOTE: The EEPROM must be powered with a 3.3v supply! 
-// If powered with 5v the Pi could fry. Programming software will warn before reading
-uint8_t getData(uint16_t addr) {
-    uint8_t data = 0; // Used to store the data value
-    setDataDir(GPIO_IN); // Set the data for input
-    setAddress(addr); // Set the address
-    gpio_put(OE, 0); // EEPROM outputs
-    sleep_us(1); // More than enough time for the EEPROM to output the data
-
+// Address must already be set
+uint8_t getData() {
+    uint8_t data = 0;
     // Start to read the data into the buffer
     for (int i = 0; i < DATA_PIN_COUNT; i++) {
         data = data | ((gpio_get(DATA_PINS[i]) != 0) << i);
     }
 
+    return(data);
+}
+
+// NOTE: The EEPROM must be powered with a 3.3v supply! 
+// If powered with 5v the Pi could fry. The programming software should warn before reading, the pico does not check!
+uint8_t readByte(uint16_t addr) {
+    uint8_t data; // Used to store the data value
+    setDataDir(GPIO_IN); // Set the data for input
+    setAddress(addr); // Set the address
+    gpio_put(OE, 0); // EEPROM output
+    sleep_us(1); // More than enough time for the EEPROM to output the data
+    data = getData();
     gpio_put(OE, 1); // Stop EEPROM outputting
     setDataDir(GPIO_OUT);
     return(data);
+}
+
+void readDataStream(uint16_t addrStart, uint16_t addrEnd) {
+    setDataDir(GPIO_IN); // Set the data for input
+    gpio_put(OE, 0); // EEPROM output
+
+    for (int addr = addrStart; addr < addrEnd + 1; addr++) {
+        setAddress(addr);
+        sleep_us(1);
+        putchar(getData()); // Output each byte
+    }
+
+    gpio_put(OE, 1);
+    setDataDir(GPIO_OUT);
 }
 
 void programByte(uint8_t data, uint16_t addr) {
@@ -136,9 +156,10 @@ void init() {
 int main() {
     init();
 
-    uint8_t instruction;    // Current instruction. 0 = nothing
-    uint16_t addr;          // Address to be written to
-    uint8_t data;           // Data to be written
+    uint8_t instruction;    // Current instruction
+    uint16_t addr;          // Address to read/write from
+    int addrStart = -1;     // Only used when reading byte stream
+    uint8_t data;           // Data for read or write
 
     states state = WAIT_INSTRUCTION; // Initial state should be wait for an instruction
 
@@ -179,13 +200,23 @@ int main() {
                 break;
             } else if (instruction == CMD_READ_BYTE) {
                 state = READ_DATA;
+            } else if (instruction == CMD_READ_BYTE_STREAM) {
+                if (addrStart == -1) {
+                    addrStart = addr; // Store the start address
+                    state = WAIT_ADDR_HIGH;
+                } else {
+                    readDataStream(addrStart, addr);
+                    addrStart = -1;
+                    state = WAIT_INSTRUCTION;
+                }
+                break;
             } else {
                 state = WAIT_INSTRUCTION;
                 break;
             }
 
         case READ_DATA: // Read the data from the EEPROM
-            putchar(getData(addr));
+            putchar(readByte(addr));
             state = WAIT_INSTRUCTION;
             break;
 
