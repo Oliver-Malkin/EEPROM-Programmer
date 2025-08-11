@@ -30,7 +30,7 @@ There are two modes for reading, the first is Read Byte (instruction `0x03`) whi
 
 ### Cancel byte stream
 
-At any point it might be needed to cancel the byte stream mode (to move to another address for example). In this case then the byte stream mode can be cancelled by sending a `0xff` signal. This will cancel the current state and put the programmer back into the initial power on state. If you need to write the value of `0xff` then this must be repeated as the next immediate byte.
+At any point it might be needed to cancel the byte stream mode (to move to another address for example). In this case then the byte stream mode can be cancelled by sending a `0xff` followed by a handshake `0xaa`. This will cancel the current state and put the programmer back into the initial power on state. If you need to write the value of `0xff` then this must be repeated as the next immediate byte. Once the programmer has ceased programming an ACK will be sent.
 
 ## Notes:
 

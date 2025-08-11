@@ -13,7 +13,7 @@
 
 // Commands
 #define CMD_WRITE_BYTE          0x01 // Write one byte of data. Wait for next instruction
-#define CMD_WRITE_STREAM        0x02 // Continually write incomming byte stream, adddresses written to sequentially
+#define CMD_WRITE_BYTE_STREAM   0x02 // Continually write incomming byte stream, adddresses written to sequentially
 #define CMD_READ_BYTE           0x03 // Read a byte of data from the EEPROM
 #define CMD_READ_BYTE_STREAM    0x04 // Read a byte stream from address 1 to n
 #define CMD_HANDSHAKE           0xaa // Handshake command. Will reply with ACK
@@ -170,7 +170,7 @@ int main() {
         case WAIT_INSTRUCTION: // Wait for the instruction
             // All of these need to get the address
             if (byte == CMD_WRITE_BYTE ||
-                byte == CMD_WRITE_STREAM ||
+                byte == CMD_WRITE_BYTE_STREAM ||
                 byte == CMD_READ_BYTE ||
                 byte == CMD_READ_BYTE_STREAM)
             {
@@ -195,7 +195,7 @@ int main() {
             addr = addr | byte; // Put the lower half into the addr
 
             // Next state is dependant on instruction
-            if (instruction == CMD_WRITE_BYTE || instruction == CMD_WRITE_STREAM) {
+            if (instruction == CMD_WRITE_BYTE || instruction == CMD_WRITE_BYTE_STREAM) {
                 state = WAIT_DATA;
                 break;
             } else if (instruction == CMD_READ_BYTE) {
@@ -221,17 +221,26 @@ int main() {
             break;
 
         case WAIT_DATA: // Get data, the write to the address
-            data = 0; // Reset the data
-            data = data | byte;
-
-            programByte(data, addr);
-
             if (instruction == CMD_WRITE_BYTE) {
+                programByte(byte, addr); // Blindly program the byte
                 sleep_ms(10); // The internal write cycle takes ~10ms
                 putchar(ACK); // Acknowledge end of instruction
                 state = WAIT_INSTRUCTION;
-            } else if (instruction == CMD_WRITE_STREAM) {
-                state = WAIT_DATA; // Only expecting data from now
+            } else if (instruction == CMD_WRITE_BYTE_STREAM) {
+                // Need to check if the byte is a value or cancel instruction
+                if (byte == CMD_CANCEL) {
+                    uint8_t temp = getchar();
+                    if (temp == CMD_CANCEL) {
+                        programByte(byte, addr); // It wanted to program that initial value
+                    } else if (temp == CMD_HANDSHAKE) {
+                        state = WAIT_INSTRUCTION; // Cancel
+                        sleep_ms(10); // Wait for internal programming cycle
+                        putchar(ACK); // Tell the client you have stopped
+                    }
+                } else {
+                    programByte(byte, addr);
+                }
+                addr++; // Move to the next address
             } else {
                 state = WAIT_INSTRUCTION; // Just so the program doesn't get stuck in case something odd happened
             }
