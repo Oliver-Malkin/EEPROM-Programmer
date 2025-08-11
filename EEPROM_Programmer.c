@@ -2,31 +2,40 @@
 #include <string.h>
 #include "pico/stdlib.h"
 
-#define LED_PIN 25
-#define WE 15
+// "Special" pins
+#define LED_PIN 25  // Built in LED pin
+#define WE 15       // Write enable (active low)
+#define OE 6        // Output enable (active low)
 
-#define ADDR_PIN_COUNT 15
-#define DATA_PIN_COUNT 8
+// Responce codes
+#define ACK 0x06    // Acknowledged
+#define NAK 0x15    // Not acknowldged
 
-#define CMD_WRITE_BYTE      0x01    // Write one byte of data. Wait for next instruction
-#define CMD_WRITE_STREAM    0x02    // Continually write incomming byte stream, adddresses written to sequentially
-#define CMD_CANCEL          0xff    // Cancel current instruction
-#define CMD_HANDSHAKE       0xaa    // Handshake command. Will reply with ACK
+// Commands
+#define CMD_WRITE_BYTE          0x01 // Write one byte of data. Wait for next instruction
+#define CMD_WRITE_STREAM        0x02 // Continually write incomming byte stream, adddresses written to sequentially
+#define CMD_READ_BYTE           0x03 // Read a byte of data from the EEPROM
+#define CMD_READ_BYTE_STREAM    0x04 // Read a byte stream from address 1 to n
+#define CMD_HANDSHAKE           0xaa // Handshake command. Will reply with ACK
+#define CMD_CANCEL              0xff // Cancel current instruction
 
-#define ACK 0x06    // All good. Acknowledged
-#define NAK 0x15    // Error. Not acknowldged
-
+// States
 typedef enum {
     WAIT_INSTRUCTION,   // Wait for instruction
     WAIT_ADDR_HIGH,     // Wait for addr high byte
     WAIT_ADDR_LOW,      // Wait for addr low byte
     WAIT_DATA,          // Wait for data byte
+    READ_DATA,          // Read the data from the EEPROM
 } states;
 
-void connectionWait()
-{
-    while (!stdio_usb_connected())
-    {
+// Pin setup
+static const int ADDR_PINS[] = { 28, 27, 26, 22, 21, 20, 19, 18, 3, 2, 0, 1, 17, 4, 16 };
+static const int DATA_PINS[] = { 14, 13, 12, 11, 10, 9, 8, 7 };
+static const int ADDR_PIN_COUNT = sizeof(ADDR_PINS) / sizeof(int);
+static const int DATA_PIN_COUNT = sizeof(DATA_PINS) / sizeof(int);
+
+void connectionWait() {
+    while (!stdio_usb_connected()) {
         gpio_put(LED_PIN, 1);
         sleep_ms(200);
         gpio_put(LED_PIN, 0);
@@ -34,90 +43,120 @@ void connectionWait()
     }
 }
 
-void programByte(uint8_t data, uint16_t addr, const int ADDR_PINS[ADDR_PIN_COUNT], const int DATA_PINS[DATA_PIN_COUNT])
-{
-    // Set the address
-    for (int i = 0; i < ADDR_PIN_COUNT; i++)
-    {
-        int pin = ADDR_PINS[i]; // Set current address pin
+void setDataDir(bool dir) {
+    // Set the data pin direction
+    for (int i = 0; i < DATA_PIN_COUNT; i++) {
+        gpio_init(DATA_PINS[i]);
+        gpio_set_dir(DATA_PINS[i], dir);
+    }
+}
+
+void setAddress(uint16_t addr) {
+    // Set the address value out
+    for (int i = 0; i < ADDR_PIN_COUNT; i++) {
+        int pin = ADDR_PINS[i];
         gpio_put(pin, (addr >> i) & 1);
     }
+}
 
-    // Set the data
-    for (int i = 0; i < DATA_PIN_COUNT; i++)
-    {
-        int pin = DATA_PINS[i]; // Set the current data pin
+void setData(uint8_t data) {
+    // Set the data value out
+    for (int i = 0; i < DATA_PIN_COUNT; i++) {
+        int pin = DATA_PINS[i];
         gpio_put(pin, (data >> i) & 1);
     }
+}
+
+// NOTE: The EEPROM must be powered with a 3.3v supply! 
+// If powered with 5v the Pi could fry. Programming software will warn before reading
+uint8_t getData(uint16_t addr) {
+    uint8_t data = 0; // Used to store the data value
+    setDataDir(GPIO_IN); // Set the data for input
+    setAddress(addr); // Set the address
+    gpio_put(OE, 0); // EEPROM outputs
+    sleep_us(1); // More than enough time for the EEPROM to output the data
+
+    // Start to read the data into the buffer
+    for (int i = 0; i < DATA_PIN_COUNT; i++) {
+        data = data | ((gpio_get(DATA_PINS[i]) != 0) << i);
+    }
+
+    gpio_put(OE, 1); // Stop EEPROM outputting
+    setDataDir(GPIO_OUT);
+    return(data);
+}
+
+void programByte(uint8_t data, uint16_t addr) {
+    setAddress(addr);
+    setData(data);
 
     // Write - Timings are very forgiving. Could be a lot less than 1us
-    sleep_us(1); // Address set up hold time
+    // Must be less than 150us though as the chip will start writing
     gpio_put(WE, 0);
     sleep_us(1); // Write pulse has to be at least 100ns
     gpio_put(WE, 1);
     sleep_us(1); // There is a data hold time of at least 50ns
-
-    // Testing
-    /*gpio_put(LED_PIN, 0);
-    sleep_ms(100);
-    gpio_put(LED_PIN, 1);
-    sleep_ms(100);
-    */
 }
 
-int main()
-{
+void init() {
     stdio_init_all();
 
+    // Set LED pint to putput
     gpio_init(LED_PIN);
-    gpio_set_dir(LED_PIN, 1);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
 
     // Set up the write enable and make it high. Pull low to write
     gpio_init(WE);
     gpio_set_dir(WE, GPIO_OUT);
     gpio_put(WE, 1);
 
-    connectionWait(); // Wait for a valid CDC connection
-                      // Blink LED to show waiting for connection
+    // Set up the output enable and make it high. Pull low to output
+    // Must be set high at powerup. Could break Pico if EEPROM is powered with 5v
+    gpio_init(OE);
+    gpio_set_dir(OE, GPIO_OUT);
+    gpio_put(OE, 1);
 
-    int ADDR_PINS[] = { 28, 27, 26, 22, 21, 20, 19, 18, 3, 2, 0, 1, 17, 4, 16 };
-    int DATA_PINS[] = { 14, 13, 12, 11, 10, 9, 8, 7 };
-
-    // Set the address pins as output
-    for (int i = 0; i < ADDR_PIN_COUNT; i++)
-    {
+    // Set the address pins as output. They will always be output
+    for (int i = 0; i < ADDR_PIN_COUNT; i++) {
         gpio_init(ADDR_PINS[i]);
         gpio_set_dir(ADDR_PINS[i], GPIO_OUT);
     }
 
-    // Set the data pins as output
-    for (int i = 0; i < DATA_PIN_COUNT; i++)
-    {
+    // Initialise the data pins. Pin dir can change for read/write
+    for (int i = 0; i < DATA_PIN_COUNT; i++) {
         gpio_init(DATA_PINS[i]);
-        gpio_set_dir(DATA_PINS[i], GPIO_OUT);
     }
 
-    uint8_t instruction = 0;    // Current instruction. 0 = nothing
-    uint16_t addr = 0;          // Address to be written to
-    uint8_t data = 0;           // Data to be written
+    setDataDir(GPIO_OUT); // Set as output to start with
+
+    connectionWait(); // Wait for a valid CDC connection
+                      // Blink LED to show waiting for connection
+}
+
+int main() {
+    init();
+
+    uint8_t instruction;    // Current instruction. 0 = nothing
+    uint16_t addr;          // Address to be written to
+    uint8_t data;           // Data to be written
 
     states state = WAIT_INSTRUCTION; // Initial state should be wait for an instruction
 
-    while (1)
-    {
-        uint8_t byte = getchar();
+    while (1) {
+        uint8_t byte = getchar(); // Read byte in the buffer
 
         switch (state) {
         case WAIT_INSTRUCTION: // Wait for the instruction
-            if (byte == CMD_WRITE_BYTE) {
-                instruction = CMD_WRITE_BYTE;
+            // All of these need to get the address
+            if (byte == CMD_WRITE_BYTE ||
+                byte == CMD_WRITE_STREAM ||
+                byte == CMD_READ_BYTE ||
+                byte == CMD_READ_BYTE_STREAM)
+            {
+                instruction = byte;
                 state = WAIT_ADDR_HIGH;
 
-            } else if (byte == CMD_WRITE_STREAM) {
-                instruction = CMD_WRITE_STREAM;
-                state = WAIT_ADDR_HIGH;
-
-            } else if (byte == CMD_HANDSHAKE) {
+            } else if (byte == CMD_HANDSHAKE || byte == CMD_CANCEL) {
                 putchar(ACK); // Basically do nothing but say I'm alive
 
             } else {
@@ -133,17 +172,31 @@ int main()
 
         case WAIT_ADDR_LOW: // Get low address byte
             addr = addr | byte; // Put the lower half into the addr
-            state = WAIT_DATA;
+
+            // Next state is dependant on instruction
+            if (instruction == CMD_WRITE_BYTE || instruction == CMD_WRITE_STREAM) {
+                state = WAIT_DATA;
+                break;
+            } else if (instruction == CMD_READ_BYTE) {
+                state = READ_DATA;
+            } else {
+                state = WAIT_INSTRUCTION;
+                break;
+            }
+
+        case READ_DATA: // Read the data from the EEPROM
+            putchar(getData(addr));
+            state = WAIT_INSTRUCTION;
             break;
 
         case WAIT_DATA: // Get data, the write to the address
             data = 0; // Reset the data
             data = data | byte;
 
-            programByte(data, addr, ADDR_PINS, DATA_PINS);
+            programByte(data, addr);
 
             if (instruction == CMD_WRITE_BYTE) {
-                sleep_ms(10); // When writing 1 byte there is a write time of 10ms
+                sleep_ms(10); // The internal write cycle takes ~10ms
                 putchar(ACK); // Acknowledge end of instruction
                 state = WAIT_INSTRUCTION;
             } else if (instruction == CMD_WRITE_STREAM) {

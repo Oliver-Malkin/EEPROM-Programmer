@@ -16,11 +16,15 @@ In the initial state the programmer will expect the data in 4 bytes in the follo
 
 When this changes is when the programmer is set to byte stream mode. Then the programmer will expect every incoming byte to be a data byte and write sequentially to the starting address.
 
-For example, sending the instruction `0x02` initiates the programmer into byte stream mode. The next two bytes must be the starting address such as `0x000a`. The programmer will send an ACK signal to say it is ready for the byte stream. Data can be sent to the programmer in 64 byte chunks. After those 64 bytes have been written the programmer will again send an ACK signal. It does this to buffer data but to let the programming computer know if it encountered any errors during the writing stage.
+For example, sending the instruction `0x02` initiates the programmer into byte stream mode. The next two bytes must be the starting address such as `0x000a`. The programmer will send an ACK signal to say it is ready for the byte stream. Data can be sent to the programmer in 64 byte chunks. After those 64 bytes have been written the programmer will again send an ACK signal. It does this to buffer data but to let the programming computer know if it encountered any errors during the writing stage. This also coincides with the page write mode in the EEPROM where sending 64 bytes of data to the same page will write that data together.
 
 Byte stream will exit when the address reaches the limit for the chip being programmed.
 
 The programmer can also be sent a handshake when in "waiting" mode. The programmer will respond with an ACK. This can be used to check if it is alive.
+
+## Read instructions:
+
+There are two modes for reading, the first is Read Byte which reads 1 byte from the supplied address. The other mode (a bit more useful) is Read Byte Stream which will read a series of bytes from one address to another. This can be initiated as such `0x03 0x1234` which will read the byte stored at address `0x1234`. To read from one address to another use `0x04 0x0000 0xaaaa`. This will read from address `0x0000` to `0xaaaa`.
 
 ### Cancel byte stream
 
