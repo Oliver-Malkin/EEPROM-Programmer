@@ -14,7 +14,6 @@ TOTAL_PAGES = ADDR_SIZE/PAGE_SIZE
 
 # Write 1 byte of data at a given address
 def writeByte(conn: serial.Serial, addr=0x0000, data = 0x00) -> bool:
-    print(f"Writing {hex(data)} to address {hex(addr)}")
     conn.write(WRITE_BYTE.to_bytes(1, 'big'))
     conn.write(addr.to_bytes(2, 'big'))
     conn.write(data.to_bytes(1, 'big'))
@@ -78,6 +77,7 @@ def replace_ff(data: list[int]) -> list[int]:
 
 # Write the datastream
 def pageWriter(conn: serial.Serial, startAddr: int, data: list):
+    print("Writing data")
     endAddr = startAddr+len(data)-1
     startPageInfo = getPageLimits(startAddr)
     endPageInfo = getPageLimits(endAddr)
@@ -94,11 +94,11 @@ def pageWriter(conn: serial.Serial, startAddr: int, data: list):
             except IndexError:
                 break
 
-        if (writeByteStream(conn, addr, replace_ff(toWrite))):
-            print(f"Following data written from address {hex(addr)}\n{toWrite}\n")
-        else:
+        if not (writeByteStream(conn, addr, replace_ff(toWrite))):
             print(f"Error occured while writing from address {hex(addr)}\n{toWrite}\n")
+            break
         addr = startAddr+dataIndex
+    print("Data written")
 
 
 with serial.Serial(timeout=1) as ser:
