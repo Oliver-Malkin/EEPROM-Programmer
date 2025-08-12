@@ -232,8 +232,8 @@ int main() {
                     uint8_t temp = getchar();
                     if (temp == CMD_CANCEL) {
                         programByte(byte, addr); // It wanted to program that initial value
-                    } else if (temp == CMD_HANDSHAKE) {
-                        state = WAIT_INSTRUCTION; // Cancel
+                    } else {
+                        state = WAIT_INSTRUCTION; // Cancel. Was not another 0xFF
                         sleep_ms(10); // Wait for internal programming cycle
                         putchar(ACK); // Tell the client you have stopped
                     }

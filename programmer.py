@@ -23,8 +23,8 @@ with serial.Serial(timeout=1) as ser:
             ser.write(WRITE_BYTE_STREAM.to_bytes(1, 'big'))
             ser.write(0x0000.to_bytes(2, 'big'))
 
-            for x in range(0, 11):
-                ser.write(x.to_bytes(1, 'big'))
+            for x in range(0, 17):
+                ser.write(0xffff.to_bytes(2, 'big'))
 
             ser.write(CANCEL.to_bytes(1, 'big'))
             ser.write(HANDSHAKE.to_bytes(1, 'big'))
