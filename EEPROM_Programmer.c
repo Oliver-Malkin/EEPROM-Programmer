@@ -160,6 +160,8 @@ int main() {
     uint16_t addr;          // Address to read/write from
     int addrStart = -1;     // Only used when reading byte stream
     uint8_t data;           // Data for read or write
+    uint8_t buffer[64];     // Data buffer. Can send at most 64 bytes (1 page)
+    int bufferIndex = 0;    // Index to know what part of the buffer to write to
 
     states state = WAIT_INSTRUCTION; // Initial state should be wait for an instruction
 
@@ -176,10 +178,17 @@ int main() {
             {
                 instruction = byte;
                 state = WAIT_ADDR_HIGH;
+                gpio_put(LED_PIN, 1); // Shows the programmer is busy
 
             } else if (byte == CMD_HANDSHAKE || byte == CMD_CANCEL) {
                 putchar(ACK); // Basically do nothing but say I'm alive
 
+            } else if (byte == 0xee) { // Testing
+                for (int i = 270; i < 280; i++) {
+                    programByte(i, i);
+                }
+                sleep_ms(10);
+                putchar(ACK);
             } else {
                 putchar(NAK); // What did you send, because I did not understand???
             }
@@ -208,16 +217,19 @@ int main() {
                     readDataStream(addrStart, addr);
                     addrStart = -1;
                     state = WAIT_INSTRUCTION;
+                    gpio_put(LED_PIN, 0); // Programmer done
                 }
                 break;
             } else {
                 state = WAIT_INSTRUCTION;
+                gpio_put(LED_PIN, 0); // Programmer done
                 break;
             }
 
         case READ_DATA: // Read the data from the EEPROM
             putchar(readByte(addr));
             state = WAIT_INSTRUCTION;
+            gpio_put(LED_PIN, 0); // Programmer done
             break;
 
         case WAIT_DATA: // Get data, the write to the address
@@ -226,23 +238,31 @@ int main() {
                 sleep_ms(10); // The internal write cycle takes ~10ms
                 putchar(ACK); // Acknowledge end of instruction
                 state = WAIT_INSTRUCTION;
+                gpio_put(LED_PIN, 0); // Programmer done
             } else if (instruction == CMD_WRITE_BYTE_STREAM) {
                 // Need to check if the byte is a value or cancel instruction
                 if (byte == CMD_CANCEL) {
                     uint8_t temp = getchar();
                     if (temp == CMD_CANCEL) {
-                        programByte(byte, addr); // It wanted to program that initial value
+                        buffer[bufferIndex] = byte; // It wanted to program that initial value
+                        bufferIndex++; // Move to the next index
                     } else {
-                        state = WAIT_INSTRUCTION; // Cancel. Was not another 0xFF
+                        state = WAIT_INSTRUCTION; // Begin write
+                        for (int i = 0; i < bufferIndex; i++) {
+                            programByte(buffer[i], addr + i);
+                        }
+                        bufferIndex = 0;
+                        gpio_put(LED_PIN, 0); // Programmer done
                         sleep_ms(10); // Wait for internal programming cycle
-                        putchar(ACK); // Tell the client you have stopped
+                        putchar(ACK); // Tell the client you have finished
                     }
                 } else {
-                    programByte(byte, addr);
+                    buffer[bufferIndex] = byte;
+                    bufferIndex++; // Move to the next index
                 }
-                addr++; // Move to the next address
             } else {
                 state = WAIT_INSTRUCTION; // Just so the program doesn't get stuck in case something odd happened
+                gpio_put(LED_PIN, 0); // Programmer done
             }
             break;
         }
