@@ -77,7 +77,6 @@ def replace_ff(data: list[int]) -> list[int]:
 
 # Write the datastream
 def pageWriter(conn: serial.Serial, startAddr: int, data: list):
-    print("Writing data")
     endAddr = startAddr+len(data)-1
     startPageInfo = getPageLimits(startAddr)
     endPageInfo = getPageLimits(endAddr)
@@ -98,8 +97,14 @@ def pageWriter(conn: serial.Serial, startAddr: int, data: list):
             print(f"Error occured while writing from address {hex(addr)}\n{toWrite}\n")
             break
         addr = startAddr+dataIndex
-    print("Data written")
 
+with open("a.out", "rb") as file:
+    code = list(file.read()) # read contents of file
+
+startAddr = 0x0 # Start programming from this address
+
+reset = [0x00, 0x80]
+resetAddr = 0x7ffc
 
 with serial.Serial(timeout=1) as ser:
     ser.baudrate = 115200
@@ -111,15 +116,10 @@ with serial.Serial(timeout=1) as ser:
     if "06" == ser.read().hex():
         print("Connected")
         # Programmer code here #
-    
-        data = [0xae]*8     # Programming some random data
-        startAddr = 0x0fe6  # Start programming from this address
-
-        pageWriter(ser, startAddr, data) # Tell the programmer to write that data
-        print(readByteStream(ser, startAddr, startAddr+len(data)-1)) # Read the data we've just programmed
-
+        print("Programming...")
+        pageWriter(ser, startAddr, code) # Tell the programmer to write the code
+        #pageWriter(ser, resetAddr, reset)        
         print("Finished")
-
     else:
         print("Error")
 
